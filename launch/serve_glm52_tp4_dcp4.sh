@@ -16,8 +16,9 @@ HEAD="${NODES[0]}"
 ENVV=(
   -e "VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS=1800"
   -e "LD_PRELOAD=/cache/huggingface/hub/nccl-2.30.4/libnccl.so.2"   # NCCL 2.30.4, the known-good line for multi-node GB10 RoCE
-  -e "HF_HOME=/cache/huggingface" -e "HF_HUB_OFFLINE=1"
+  -e "HF_HOME=/cache/huggingface"
   -e "TRITON_CACHE_DIR=/cache/huggingface/.tritoncache"
+  -e "HF_HUB_OFFLINE=1"
   -e "VLLM_ALLOW_LONG_MAX_MODEL_LEN=1"
   -e "TORCH_CUDA_ARCH_LIST=12.1a"
   -e "NCCL_NET=IB" -e "NCCL_IB_DISABLE=0"
@@ -27,15 +28,17 @@ ENVV=(
   -e "NCCL_IB_GID_INDEX=3"                                 # RoCEv2 GID; verify with show_gids on your nodes
   -e "NCCL_MAX_NCHANNELS=4" -e "NCCL_MIN_NCHANNELS=4"
   -e "NCCL_CROSS_NIC=1" -e "NCCL_CUMEM_ENABLE=0"
-  -e "NCCL_IGNORE_CPU_AFFINITY=1" -e "NCCL_DEBUG=WARN"
+  -e "NCCL_IGNORE_CPU_AFFINITY=1" -e "NCCL_DEBUG=WARN"     # the measured run logged INFO/INIT,NET to a host file; WARN is fine for serving
   -e "VLLM_MARLIN_USE_ATOMIC_ADD=1"                        # Marlin small-batch reduce (measured on GB10)
   -e "VLLM_ONE_GPU_PER_NODE=1"                             # DCP init: one GPU per node, skips the intra-node gloo race
   -e "B12X_CUTE_COMPILE_CACHE_DIR=/cache/huggingface/.b12x_cute_cache"
   -e "CUTE_DSL_CACHE_DIR=/cache/huggingface/.cute_dsl_cache"
-  -e "VLLM_USE_FLASHINFER_SAMPLER=1" -e "CUDA_DEVICE_MAX_CONNECTIONS=4"
+  -e "KV_FP8_ROPE=1"
+  -e "PYTHONUNBUFFERED=1"
+  -e "VLLM_MOE_MARLIN_ATOMIC_ADD=1"                        # unknown to vLLM 0.27 (harmless warning); kept so the argv matches the measured run
+  -e "R17_DRAFT_TEMP_SCALE=1.0"                            # 0xdfi overlay knob; 1.0 is a no-op
   -e "VLLM_BUILDA_BMM=0"
   -e "VLLM_USE_B12X_SPARSE_INDEXER=1"
-  -e "PYTHONUNBUFFERED=1"
 )
 BASE=(
   --cap-add IPC_LOCK --ulimit memlock=-1:-1
@@ -45,7 +48,7 @@ BASE=(
 )
 SERVE=(
   "$MODEL_DIR"
-  --served-model-name glm-5.2 --host 0.0.0.0 --port "$PORT"
+  --served-model-name glm-5.2-quanttrio --host 0.0.0.0 --port "$PORT"
   --trust-remote-code --reasoning-parser glm45 --tool-call-parser glm47 --enable-auto-tool-choice
   --enable-prefix-caching
   --attention-backend B12X_MLA_SPARSE
